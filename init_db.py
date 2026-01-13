@@ -11,6 +11,8 @@ def create_admin_user(db):
     """Create default admin user if not exists"""
     admin = db.query(User).filter(User.login == "admin").first()
     if not admin:
+        # WARNING: Default password is for development only!
+        # In production, change this immediately or require password change on first login
         admin = User(
             full_name="System Administrator",
             role=UserRole.admin,
@@ -20,6 +22,7 @@ def create_admin_user(db):
         db.add(admin)
         db.commit()
         print("✓ Created admin user (login: admin, password: admin123)")
+        print("  ⚠️  WARNING: Change the default password in production!")
     else:
         print("✓ Admin user already exists")
 
