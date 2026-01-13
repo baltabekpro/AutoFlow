@@ -7,6 +7,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from datetime import timedelta
+from contextlib import asynccontextmanager
 
 from app.database import get_db, init_db
 from app.models import User, UserRole, OrderStatus
@@ -24,18 +25,23 @@ from app.auth import (
 )
 from app import crud
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan context manager for startup and shutdown events"""
+    # Startup
+    init_db()
+    yield
+    # Shutdown (if needed in the future)
+
+
 # Initialize FastAPI app
 app = FastAPI(
     title="AutoFlow API",
     description="Auto service management system backend",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan
 )
-
-
-@app.on_event("startup")
-async def startup_event():
-    """Initialize database on startup"""
-    init_db()
 
 
 # ============== Root Endpoint ==============

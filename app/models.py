@@ -3,7 +3,7 @@ SQLAlchemy database models
 """
 from sqlalchemy import Column, Integer, String, Float, ForeignKey, DateTime, Enum
 from sqlalchemy.orm import relationship
-from datetime import datetime
+from datetime import datetime, timezone
 import enum
 from app.database import Base
 
@@ -74,7 +74,7 @@ class Order(Base):
     status = Column(Enum(OrderStatus), nullable=False, default=OrderStatus.new, index=True)
     total_price = Column(Float, nullable=False, default=0.0)
     mileage = Column(Integer, nullable=True)
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
     
     # Relationships
     vehicle = relationship("Vehicle", back_populates="orders")
