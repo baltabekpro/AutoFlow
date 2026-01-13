@@ -173,6 +173,14 @@ curl -X GET "http://localhost:8000/clients/" \
 - **Password Hashing**: bcrypt (passlib)
 - **Migrations**: Alembic 1.13.1
 
+## 🔒 Безопасность
+
+Все известные уязвимости исправлены:
+- ✅ FastAPI обновлен до 0.109.1 (исправлен ReDoS в Content-Type)
+- ✅ python-multipart обновлен до 0.0.18 (исправлены DoS и ReDoS)
+
+Подробнее см. [SECURITY.md](SECURITY.md)
+
 ## 📝 Лицензия
 
 MIT
