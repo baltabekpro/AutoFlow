@@ -3,7 +3,7 @@ Database initialization script
 Creates initial admin user and sample data
 """
 from app.database import SessionLocal, init_db
-from app.models import User, UserRole, Client, Vehicle, Inventory
+from app.models import User, Client, Vehicle, Inventory, Service, ClientType, EmployeeStatus
 from app.auth import get_password_hash
 
 
@@ -14,8 +14,10 @@ def create_admin_user(db):
         # WARNING: Default password is for development only!
         # In production, change this immediately or require password change on first login
         admin = User(
-            full_name="System Administrator",
-            role=UserRole.admin,
+            name="System Administrator",
+            role="admin",
+            phone="+77012345678",
+            status=EmployeeStatus.active,
             login="admin",
             password_hash=get_password_hash("admin123")
         )
@@ -36,16 +38,28 @@ def create_sample_data(db):
     
     # Create sample mechanic
     mechanic = User(
-        full_name="John Mechanic",
-        role=UserRole.mechanic,
+        name="John Mechanic",
+        role="mechanic",
+        phone="+77019876543",
+        status=EmployeeStatus.active,
         login="mechanic1",
         password_hash=get_password_hash("mechanic123")
     )
     db.add(mechanic)
     
     # Create sample clients
-    client1 = Client(name="Айдар Смагулов", phone="+77011234567")
-    client2 = Client(name="Айгерім Нұрланова", phone="+77029876543")
+    client1 = Client(
+        name="Айдар Смагулов", 
+        phone="+77011234567",
+        email="aidar@example.com",
+        type=ClientType.private
+    )
+    client2 = Client(
+        name="Айгерім Нұрланова", 
+        phone="+77029876543",
+        email="aigerim@example.com",
+        type=ClientType.private
+    )
     db.add_all([client1, client2])
     db.commit()
     
@@ -68,16 +82,26 @@ def create_sample_data(db):
     
     # Create sample inventory items
     items = [
-        Inventory(name="Моторное масло 5W-30", article="OIL-5W30-001", quantity=50, price=5000),
-        Inventory(name="Масляный фильтр", article="FILTER-OIL-001", quantity=30, price=1500),
-        Inventory(name="Воздушный фильтр", article="FILTER-AIR-001", quantity=25, price=2000),
-        Inventory(name="Тормозные колодки", article="BRAKE-PAD-001", quantity=20, price=8000),
-        Inventory(name="Свечи зажигания", article="SPARK-PLUG-001", quantity=40, price=1200),
+        Inventory(name="Моторное масло 5W-30", sku="OIL-5W30-001", quantity=50, price=5000, location="A1-01"),
+        Inventory(name="Масляный фильтр", sku="FILTER-OIL-001", quantity=30, price=1500, location="A1-02"),
+        Inventory(name="Воздушный фильтр", sku="FILTER-AIR-001", quantity=25, price=2000, location="A1-03"),
+        Inventory(name="Тормозные колодки", sku="BRAKE-PAD-001", quantity=20, price=8000, location="B2-01"),
+        Inventory(name="Свечи зажигания", sku="SPARK-PLUG-001", quantity=40, price=1200, location="A2-01"),
     ]
     db.add_all(items)
     
+    # Create sample services
+    services = [
+        Service(name="Замена масла", price=3000, duration=0.5),
+        Service(name="Диагностика двигателя", price=5000, duration=1.0),
+        Service(name="Замена тормозных колодок", price=8000, duration=2.0),
+        Service(name="Развал-схождение", price=4000, duration=1.5),
+        Service(name="Замена свечей зажигания", price=2000, duration=0.75),
+    ]
+    db.add_all(services)
+    
     db.commit()
-    print("✓ Created sample data (1 mechanic, 2 clients, 2 vehicles, 5 inventory items)")
+    print("✓ Created sample data (1 mechanic, 2 clients, 2 vehicles, 5 inventory items, 5 services)")
 
 
 def main():
