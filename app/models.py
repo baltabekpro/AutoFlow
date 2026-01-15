@@ -1,7 +1,7 @@
 """
 SQLAlchemy database models
 """
-from sqlalchemy import Column, Integer, String, Float, ForeignKey, DateTime, Enum
+from sqlalchemy import Column, Integer, String, Float, ForeignKey, DateTime, Enum, Boolean, Text
 from sqlalchemy.orm import relationship
 from datetime import datetime, timezone
 import enum
@@ -14,21 +14,44 @@ class UserRole(str, enum.Enum):
     mechanic = "mechanic"
 
 
+class EmployeeStatus(str, enum.Enum):
+    """Employee status enumeration"""
+    active = "active"
+    vacation = "vacation"
+    sick = "sick"
+
+
 class OrderStatus(str, enum.Enum):
     """Order status enumeration"""
-    new = "new"
-    in_progress = "in_progress"
-    ready = "ready"
-    closed = "closed"
+    draft = "draft"
+    pending = "pending"
+    diagnosis = "diagnosis"
+    work = "work"
+    parts = "parts"
+    done = "done"
+
+
+class ClientType(str, enum.Enum):
+    """Client type enumeration"""
+    private = "private"
+    corporate = "corporate"
+
+
+class OrderItemType(str, enum.Enum):
+    """Order item type enumeration"""
+    service = "service"
+    part = "part"
 
 
 class User(Base):
-    """User model - system users (admin, mechanics)"""
+    """User model - system users (admin, mechanics) - also known as Employee"""
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True, index=True)
-    full_name = Column(String, nullable=False)
-    role = Column(Enum(UserRole), nullable=False, default=UserRole.mechanic)
+    name = Column(String, nullable=False)  # Changed from full_name
+    role = Column(String, nullable=False, default="mechanic")  # Changed to String for flexibility
+    phone = Column(String, nullable=False)
+    status = Column(Enum(EmployeeStatus), nullable=False, default=EmployeeStatus.active)
     login = Column(String, unique=True, nullable=False, index=True)
     password_hash = Column(String, nullable=False)
     
@@ -43,9 +66,12 @@ class Client(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False, index=True)
     phone = Column(String, nullable=False, index=True)
+    email = Column(String, nullable=True)
+    type = Column(Enum(ClientType), nullable=False, default=ClientType.private)
     
     # Relationships
     vehicles = relationship("Vehicle", back_populates="client", cascade="all, delete-orphan")
+    orders = relationship("Order", back_populates="client")
 
 
 class Vehicle(Base):
@@ -61,24 +87,37 @@ class Vehicle(Base):
     
     # Relationships
     client = relationship("Client", back_populates="vehicles")
-    orders = relationship("Order", back_populates="vehicle", cascade="all, delete-orphan")
+    orders = relationship("Order", back_populates="vehicle_obj", cascade="all, delete-orphan")
 
 
 class Order(Base):
     """Order model - service orders"""
     __tablename__ = "orders"
 
-    id = Column(Integer, primary_key=True, index=True)
-    vehicle_id = Column(Integer, ForeignKey("vehicles.id"), nullable=False)
+    id = Column(String, primary_key=True, index=True)  # Changed to String for UUID support
+    client_id = Column(Integer, ForeignKey("clients.id"), nullable=False)
+    vehicle_id = Column(Integer, ForeignKey("vehicles.id"), nullable=True)  # Made optional
     mechanic_id = Column(Integer, ForeignKey("users.id"), nullable=True)
-    status = Column(Enum(OrderStatus), nullable=False, default=OrderStatus.new, index=True)
-    total_price = Column(Float, nullable=False, default=0.0)
-    mileage = Column(Integer, nullable=True)
+    
+    # New fields to match OpenAPI spec
+    client_name = Column(String, nullable=True)  # Denormalized for quick access
+    vehicle = Column(String, nullable=True)  # e.g., "Toyota Camry"
+    plate = Column(String, nullable=True)  # License plate
+    
+    status = Column(Enum(OrderStatus), nullable=False, default=OrderStatus.draft, index=True)
+    total = Column(Float, nullable=False, default=0.0)  # Renamed from total_price
     created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
     
+    # Additional fields
+    is_urgent = Column(Boolean, nullable=False, default=False)
+    notes = Column(Text, nullable=True)
+    mileage = Column(Integer, nullable=True)
+    damages = Column(Text, nullable=True)  # Store as JSON string or comma-separated
+    
     # Relationships
-    vehicle = relationship("Vehicle", back_populates="orders")
+    vehicle_obj = relationship("Vehicle", back_populates="orders")
     mechanic = relationship("User", back_populates="orders")
+    client = relationship("Client", back_populates="orders")
     items = relationship("OrderItem", back_populates="order", cascade="all, delete-orphan")
 
 
@@ -88,9 +127,10 @@ class Inventory(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False, index=True)
-    article = Column(String, nullable=False, unique=True, index=True)
+    sku = Column(String, nullable=False, unique=True, index=True)  # Changed from article
     quantity = Column(Integer, nullable=False, default=0)
     price = Column(Float, nullable=False)
+    location = Column(String, nullable=False)  # New field
     
     # Relationships
     order_items = relationship("OrderItem", back_populates="inventory_item")
@@ -101,12 +141,29 @@ class OrderItem(Base):
     __tablename__ = "order_items"
 
     id = Column(Integer, primary_key=True, index=True)
-    order_id = Column(Integer, ForeignKey("orders.id"), nullable=False)
+    order_id = Column(String, ForeignKey("orders.id"), nullable=False)  # Changed to String
     inventory_id = Column(Integer, ForeignKey("inventory.id"), nullable=True)
-    description = Column(String, nullable=False)  # Service or part description
-    quantity = Column(Integer, nullable=False, default=1)
-    price_at_time = Column(Float, nullable=False)  # Price at the time of adding
+    service_id = Column(Integer, ForeignKey("services.id"), nullable=True)  # New field
+    
+    name = Column(String, nullable=False)  # Changed from description
+    price = Column(Float, nullable=False)  # Changed from price_at_time
+    qty = Column(Integer, nullable=False, default=1)  # Changed from quantity
+    type = Column(Enum(OrderItemType), nullable=False)  # New field
     
     # Relationships
     order = relationship("Order", back_populates="items")
     inventory_item = relationship("Inventory", back_populates="order_items")
+    service = relationship("Service", back_populates="order_items")
+
+
+class Service(Base):
+    """Service model - service catalog"""
+    __tablename__ = "services"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False, index=True)
+    price = Column(Float, nullable=False)
+    duration = Column(Float, nullable=False)  # Duration in hours
+    
+    # Relationships
+    order_items = relationship("OrderItem", back_populates="service")

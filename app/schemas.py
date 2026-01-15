@@ -2,15 +2,41 @@
 Pydantic schemas for request/response validation
 """
 from pydantic import BaseModel, Field, ConfigDict
-from typing import Optional, List
+from typing import Optional, List, TYPE_CHECKING
 from datetime import datetime
-from app.models import UserRole, OrderStatus
+from app.models import OrderStatus, ClientType, EmployeeStatus, OrderItemType
+
+if TYPE_CHECKING:
+    pass
+
+
+# ============== Employee Schemas ==============
+class EmployeeBase(BaseModel):
+    name: str
+    role: str
+    phone: str
+    status: EmployeeStatus
+
+
+class EmployeeInput(EmployeeBase):
+    pass
+
+
+class EmployeeCreate(EmployeeBase):
+    login: str
+    password: str
+
+
+class EmployeeResponse(EmployeeBase):
+    id: int
+    login: str
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ============== Auth Schemas ==============
 class Token(BaseModel):
-    access_token: str
-    token_type: str
+    token: str
+    user: EmployeeResponse
 
 
 class TokenData(BaseModel):
@@ -22,26 +48,19 @@ class UserLogin(BaseModel):
     password: str
 
 
-# ============== User Schemas ==============
-class UserBase(BaseModel):
-    full_name: str
-    role: UserRole
-    login: str
-
-
-class UserCreate(UserBase):
-    password: str
-
-
-class UserResponse(UserBase):
-    id: int
-    model_config = ConfigDict(from_attributes=True)
-
-
 # ============== Client Schemas ==============
 class ClientBase(BaseModel):
     name: str
     phone: str
+    email: Optional[str] = None
+    type: ClientType
+
+
+class ClientInput(BaseModel):
+    name: str
+    phone: str
+    email: Optional[str] = None
+    type: ClientType
 
 
 class ClientCreate(ClientBase):
@@ -51,11 +70,17 @@ class ClientCreate(ClientBase):
 class ClientUpdate(BaseModel):
     name: Optional[str] = None
     phone: Optional[str] = None
+    email: Optional[str] = None
+    type: Optional[ClientType] = None
 
 
-class ClientResponse(ClientBase):
+class Client(ClientBase):
     id: int
     model_config = ConfigDict(from_attributes=True)
+
+
+class ClientResponse(Client):
+    pass
 
 
 # ============== Vehicle Schemas ==============
@@ -76,76 +101,158 @@ class VehicleResponse(VehicleBase):
     model_config = ConfigDict(from_attributes=True)
 
 
-# ============== Inventory Schemas ==============
-class InventoryBase(BaseModel):
+# ============== Service Schemas ==============
+class ServiceBase(BaseModel):
     name: str
-    article: str
+    price: float
+    duration: float
+
+
+class ServiceInput(ServiceBase):
+    pass
+
+
+class Service(ServiceBase):
+    id: int
+    model_config = ConfigDict(from_attributes=True)
+
+
+# ============== Inventory Schemas ==============
+class InventoryItemBase(BaseModel):
+    name: str
+    sku: str
     quantity: int = Field(ge=0)
     price: float = Field(ge=0)
+    location: str
 
 
-class InventoryCreate(InventoryBase):
+class InventoryItemInput(InventoryItemBase):
+    pass
+
+
+class InventoryItem(InventoryItemBase):
+    id: int
+    model_config = ConfigDict(from_attributes=True)
+
+
+class InventoryCreate(InventoryItemBase):
     pass
 
 
 class InventoryUpdate(BaseModel):
     name: Optional[str] = None
-    article: Optional[str] = None
+    sku: Optional[str] = None
     quantity: Optional[int] = Field(default=None, ge=0)
     price: Optional[float] = Field(default=None, ge=0)
+    location: Optional[str] = None
 
 
-class InventoryResponse(InventoryBase):
-    id: int
-    model_config = ConfigDict(from_attributes=True)
+class InventoryResponse(InventoryItem):
+    pass
 
 
 # ============== OrderItem Schemas ==============
 class OrderItemBase(BaseModel):
-    inventory_id: Optional[int] = None
-    description: str
-    quantity: int = Field(ge=1)
-    price_at_time: float = Field(ge=0)
+    name: str
+    price: float
+    qty: float
+    type: OrderItemType
+
+
+class OrderItem(OrderItemBase):
+    id: int
+    model_config = ConfigDict(from_attributes=True)
 
 
 class OrderItemCreate(BaseModel):
     inventory_id: Optional[int] = None
-    description: str
-    quantity: int = Field(ge=1, default=1)
+    service_id: Optional[int] = None
+    name: str
+    price: float
+    qty: float = 1
+    type: OrderItemType
 
 
-class OrderItemResponse(OrderItemBase):
-    id: int
-    order_id: int
-    model_config = ConfigDict(from_attributes=True)
+class OrderItemResponse(OrderItem):
+    pass
 
 
 # ============== Order Schemas ==============
 class OrderBase(BaseModel):
-    vehicle_id: int
-    mechanic_id: Optional[int] = None
+    client_id: int
+    client_name: Optional[str] = None
+    vehicle: Optional[str] = None
+    plate: Optional[str] = None
+    status: OrderStatus = OrderStatus.draft
+    is_urgent: Optional[bool] = False
+    notes: Optional[str] = None
     mileage: Optional[int] = None
+    damages: Optional[List[str]] = None
 
 
-class OrderCreate(OrderBase):
-    pass
+class OrderInput(BaseModel):
+    client_id: int
+    client_name: Optional[str] = None
+    vehicle: str
+    plate: str
+    status: Optional[OrderStatus] = OrderStatus.draft
+    items: List[OrderItemCreate]
+    is_urgent: Optional[bool] = False
+    notes: Optional[str] = None
+    mileage: Optional[int] = None
+    damages: Optional[List[str]] = None
+
+
+class OrderCreate(BaseModel):
+    client_id: int
+    client_name: Optional[str] = None
+    vehicle: str
+    plate: str
+    status: Optional[OrderStatus] = OrderStatus.draft
+    items: Optional[List[OrderItemCreate]] = None
+    is_urgent: Optional[bool] = False
+    notes: Optional[str] = None
+    mileage: Optional[int] = None
+    damages: Optional[List[str]] = None
 
 
 class OrderStatusUpdate(BaseModel):
     status: OrderStatus
 
 
-class OrderResponse(OrderBase):
-    id: int
-    status: OrderStatus
-    total_price: float
+class Order(OrderBase):
+    id: str
+    total: float
+    items: List[OrderItem] = []
     created_at: datetime
-    items: List[OrderItemResponse] = []
     model_config = ConfigDict(from_attributes=True)
 
 
-class OrderDetailResponse(OrderResponse):
+class OrderResponse(Order):
+    pass
+
+
+class OrderDetailResponse(Order):
     """Extended order response with related data"""
-    vehicle: VehicleResponse
-    mechanic: Optional[UserResponse] = None
+    vehicle_obj: Optional[VehicleResponse] = None
+    mechanic: Optional[EmployeeResponse] = None
     model_config = ConfigDict(from_attributes=True)
+
+
+# ============== Dashboard Schemas ==============
+class DashboardStats(BaseModel):
+    revenue: float
+    active_orders: int = Field(alias="activeOrders")
+    pending_release: int = Field(alias="pendingRelease")
+    total_orders: int = Field(alias="totalOrders")
+    
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class FinanceReport(BaseModel):
+    revenue: float
+    expenses: float
+    profit: float
+    completed_orders_count: int = Field(alias="completedOrdersCount")
+    
+    model_config = ConfigDict(populate_by_name=True)

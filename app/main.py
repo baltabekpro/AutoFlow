@@ -1,23 +1,27 @@
 """
 FastAPI main application - AutoFlow Backend
-Auto service management system
+Auto service management system - AutoMaster ERP API
 """
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from typing import List, Optional
-from datetime import timedelta
+from datetime import timedelta, datetime
 from contextlib import asynccontextmanager
+import uuid
+import json
 
 from app.database import get_db, init_db
-from app.models import User, UserRole, OrderStatus
+from app.models import User, OrderStatus, OrderItemType
 from app.schemas import (
-    Token, UserCreate, UserResponse, UserLogin,
-    ClientCreate, ClientResponse, ClientUpdate,
+    Token, EmployeeCreate, EmployeeResponse, EmployeeInput,
+    ClientInput, Client, ClientResponse,
     VehicleCreate, VehicleResponse,
-    OrderCreate, OrderResponse, OrderDetailResponse, OrderStatusUpdate,
-    InventoryCreate, InventoryResponse, InventoryUpdate,
-    OrderItemCreate, OrderItemResponse
+    OrderInput, OrderResponse, OrderDetailResponse, Order,
+    InventoryItemInput, InventoryItem, InventoryResponse,
+    ServiceInput, Service,
+    OrderItemCreate, OrderItem,
+    DashboardStats, FinanceReport
 )
 from app.auth import (
     authenticate_user, create_access_token, get_current_user,
@@ -37,9 +41,9 @@ async def lifespan(app: FastAPI):
 
 # Initialize FastAPI app
 app = FastAPI(
-    title="AutoFlow API",
-    description="Auto service management system backend",
-    version="1.0.0",
+    title="AutoMaster ERP API",
+    description="API для управления процессами автосервиса (Заказы, Склад, Клиенты, Сотрудники).",
+    version="1.1.0",
     lifespan=lifespan
 )
 
@@ -49,29 +53,27 @@ app = FastAPI(
 async def root():
     """Root endpoint"""
     return {
-        "message": "AutoFlow API",
-        "version": "1.0.0",
+        "message": "AutoMaster ERP API",
+        "version": "1.1.0",
         "docs": "/docs",
         "redoc": "/redoc"
     }
 
 
 # ============== Authentication Endpoints ==============
-@app.post("/auth/login", response_model=Token, tags=["Auth"])
+@app.post("/api/auth/login", response_model=Token, tags=["Auth"])
 async def login(
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db)
 ):
     """
-    Login endpoint - returns JWT access token
-    Use username field for login
+    Вход в систему
     """
     user = authenticate_user(db, form_data.username, form_data.password)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect login or password",
-            headers={"WWW-Authenticate": "Bearer"},
+            detail="Неверные учетные данные"
         )
     
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
@@ -79,253 +81,345 @@ async def login(
         data={"sub": user.login},
         expires_delta=access_token_expires
     )
-    return {"access_token": access_token, "token_type": "bearer"}
-
-
-@app.post("/auth/register", response_model=UserResponse, tags=["Auth"])
-async def register(
-    user: UserCreate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_admin_user)
-):
-    """
-    Register new user (admin only)
-    """
-    return crud.create_user(db, user)
-
-
-# ============== Client Endpoints ==============
-@app.get("/clients/", response_model=List[ClientResponse], tags=["Clients"])
-async def get_clients(
-    search: Optional[str] = None,
-    skip: int = 0,
-    limit: int = 100,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    """
-    Get list of clients with optional search by name or phone
-    """
-    return crud.get_clients(db, search=search, skip=skip, limit=limit)
-
-
-@app.post("/clients/", response_model=ClientResponse, status_code=status.HTTP_201_CREATED, tags=["Clients"])
-async def create_client(
-    client: ClientCreate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    """
-    Create a new client
-    """
-    return crud.create_client(db, client)
-
-
-@app.get("/clients/{client_id}", response_model=ClientResponse, tags=["Clients"])
-async def get_client(
-    client_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    """
-    Get client by ID
-    """
-    client = crud.get_client(db, client_id)
-    if not client:
-        raise HTTPException(status_code=404, detail="Client not found")
-    return client
-
-
-@app.patch("/clients/{client_id}", response_model=ClientResponse, tags=["Clients"])
-async def update_client(
-    client_id: int,
-    client_update: ClientUpdate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    """
-    Update client information
-    """
-    client = crud.update_client(db, client_id, client_update)
-    if not client:
-        raise HTTPException(status_code=404, detail="Client not found")
-    return client
-
-
-@app.get("/clients/{client_id}/vehicles", response_model=List[VehicleResponse], tags=["Clients"])
-async def get_client_vehicles(
-    client_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    """
-    Get all vehicles for a specific client
-    """
-    # Verify client exists
-    client = crud.get_client(db, client_id)
-    if not client:
-        raise HTTPException(status_code=404, detail="Client not found")
     
-    return crud.get_client_vehicles(db, client_id)
+    user_response = EmployeeResponse(
+        id=user.id,
+        name=user.name,
+        role=user.role,
+        phone=user.phone,
+        status=user.status,
+        login=user.login
+    )
+    
+    return {"token": access_token, "user": user_response}
 
 
-# ============== Vehicle Endpoints ==============
-@app.post("/vehicles/", response_model=VehicleResponse, status_code=status.HTTP_201_CREATED, tags=["Vehicles"])
-async def create_vehicle(
-    vehicle: VehicleCreate,
+@app.get("/api/auth/me", response_model=EmployeeResponse, tags=["Auth"])
+async def get_current_user_info(
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Получить текущего пользователя
+    """
+    return EmployeeResponse(
+        id=current_user.id,
+        name=current_user.name,
+        role=current_user.role,
+        phone=current_user.phone,
+        status=current_user.status,
+        login=current_user.login
+    )
+
+
+# ============== Dashboard & Finance Endpoints ==============
+@app.get("/api/stats", response_model=DashboardStats, tags=["Dashboard"])
+async def get_dashboard_stats(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """
-    Register a new vehicle
+    KPI для дашборда
     """
-    return crud.create_vehicle(db, vehicle)
+    return crud.get_dashboard_stats(db)
 
 
-@app.get("/vehicles/{vehicle_id}", response_model=VehicleResponse, tags=["Vehicles"])
-async def get_vehicle(
-    vehicle_id: int,
+@app.get("/api/finance/report", response_model=FinanceReport, tags=["Dashboard"])
+async def get_finance_report(
+    dateFrom: Optional[str] = None,
+    dateTo: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """
-    Get vehicle by ID
+    Финансовый отчет
+    Расчет выручки, расходов и прибыли на стороне сервера.
     """
-    vehicle = crud.get_vehicle(db, vehicle_id)
-    if not vehicle:
-        raise HTTPException(status_code=404, detail="Vehicle not found")
-    return vehicle
+    return crud.get_finance_report(db, dateFrom, dateTo)
 
 
-# ============== Order Endpoints ==============
-@app.get("/orders/", response_model=List[OrderResponse], tags=["Orders"])
+# ============== Orders Endpoints ==============
+@app.get("/api/orders", response_model=List[Order], tags=["Orders"])
 async def get_orders(
-    status_filter: Optional[OrderStatus] = None,
-    skip: int = 0,
-    limit: int = 100,
+    status: Optional[OrderStatus] = None,
+    search: Optional[str] = None,
+    limit: int = 50,
+    offset: int = 0,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """
-    Get list of orders with optional status filter
+    Получить список заказов
     """
-    return crud.get_orders(db, status_filter=status_filter, skip=skip, limit=limit)
+    return crud.get_orders(db, status_filter=status, search=search, skip=offset, limit=limit)
 
 
-@app.post("/orders/", response_model=OrderResponse, status_code=status.HTTP_201_CREATED, tags=["Orders"])
+@app.post("/api/orders", response_model=Order, status_code=status.HTTP_201_CREATED, tags=["Orders"])
 async def create_order(
-    order: OrderCreate,
+    order: OrderInput,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """
-    Create a new order
+    Создать новый заказ
+    ID генерируется сервером.
     """
     return crud.create_order(db, order)
 
 
-@app.get("/orders/{order_id}", response_model=OrderDetailResponse, tags=["Orders"])
+@app.get("/api/orders/{id}", response_model=Order, tags=["Orders"])
 async def get_order(
-    order_id: int,
+    id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """
-    Get detailed information about a specific order
+    Получить заказ по ID
     """
-    order = crud.get_order(db, order_id)
+    order = crud.get_order(db, id)
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
     return order
 
 
-@app.patch("/orders/{order_id}/status", response_model=OrderResponse, tags=["Orders"])
-async def update_order_status(
-    order_id: int,
-    status_update: OrderStatusUpdate,
+@app.put("/api/orders/{id}", response_model=Order, tags=["Orders"])
+async def update_order(
+    id: str,
+    order: Order,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """
-    Update order status
-    When status is changed to 'closed', inventory is automatically deducted
+    Обновить заказ
     """
-    order = crud.update_order_status(db, order_id, status_update.status)
-    if not order:
+    updated_order = crud.update_order(db, id, order)
+    if not updated_order:
         raise HTTPException(status_code=404, detail="Order not found")
-    return order
-
-
-@app.post("/orders/{order_id}/add-item", response_model=OrderItemResponse, status_code=status.HTTP_201_CREATED, tags=["Orders"])
-async def add_order_item(
-    order_id: int,
-    item: OrderItemCreate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    """
-    Add item (service or part) to order
-    Order total price is automatically recalculated
-    """
-    return crud.add_order_item(db, order_id, item)
+    return updated_order
 
 
 # ============== Inventory Endpoints ==============
-@app.get("/inventory/", response_model=List[InventoryResponse], tags=["Inventory"])
+@app.get("/api/inventory", response_model=List[InventoryItem], tags=["Inventory"])
 async def get_inventory(
     search: Optional[str] = None,
-    skip: int = 0,
-    limit: int = 100,
+    limit: int = 50,
+    offset: int = 0,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """
-    Get inventory list with optional search by name or article
+    Получить список товаров
     """
-    return crud.get_inventory(db, search=search, skip=skip, limit=limit)
+    return crud.get_inventory(db, search=search, skip=offset, limit=limit)
 
 
-@app.post("/inventory/", response_model=InventoryResponse, status_code=status.HTTP_201_CREATED, tags=["Inventory"])
+@app.post("/api/inventory", response_model=InventoryItem, status_code=status.HTTP_201_CREATED, tags=["Inventory"])
 async def create_inventory_item(
-    item: InventoryCreate,
+    item: InventoryItemInput,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_admin_user)
+    current_user: User = Depends(get_current_user)
 ):
     """
-    Create a new inventory item (admin only)
+    Добавить товар
     """
     return crud.create_inventory_item(db, item)
 
 
-@app.get("/inventory/{item_id}", response_model=InventoryResponse, tags=["Inventory"])
-async def get_inventory_item(
-    item_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    """
-    Get inventory item by ID
-    """
-    item = crud.get_inventory_item(db, item_id)
-    if not item:
-        raise HTTPException(status_code=404, detail="Inventory item not found")
-    return item
-
-
-@app.put("/inventory/{item_id}", response_model=InventoryResponse, tags=["Inventory"])
+@app.put("/api/inventory/{id}", tags=["Inventory"])
 async def update_inventory_item(
-    item_id: int,
-    item_update: InventoryUpdate,
+    id: int,
+    item: InventoryItem,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """
-    Update inventory item
+    Обновить товар
     """
-    item = crud.update_inventory_item(db, item_id, item_update)
-    if not item:
+    updated_item = crud.update_inventory_item_full(db, id, item)
+    if not updated_item:
         raise HTTPException(status_code=404, detail="Inventory item not found")
-    return item
+    return {"message": "Обновлено"}
+
+
+@app.delete("/api/inventory/{id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Inventory"])
+async def delete_inventory_item(
+    id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Удалить товар
+    """
+    success = crud.delete_inventory_item(db, id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Inventory item not found")
+    return
+
+
+# ============== Services Endpoints ==============
+@app.get("/api/services", response_model=List[Service], tags=["Services"])
+async def get_services(
+    search: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Получить список услуг
+    """
+    return crud.get_services(db, search=search)
+
+
+@app.post("/api/services", status_code=status.HTTP_201_CREATED, tags=["Services"])
+async def create_service(
+    service: ServiceInput,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Создать услугу
+    """
+    return crud.create_service(db, service)
+
+
+@app.put("/api/services/{id}", tags=["Services"])
+async def update_service(
+    id: int,
+    service: Service,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Обновить услугу
+    """
+    updated_service = crud.update_service(db, id, service)
+    if not updated_service:
+        raise HTTPException(status_code=404, detail="Service not found")
+    return {"message": "Успешно"}
+
+
+@app.delete("/api/services/{id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Services"])
+async def delete_service(
+    id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Удалить услугу
+    """
+    success = crud.delete_service(db, id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Service not found")
+    return
+
+
+# ============== Clients Endpoints ==============
+@app.get("/api/clients", response_model=List[Client], tags=["Clients"])
+async def get_clients(
+    search: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Получить список клиентов
+    """
+    return crud.get_clients(db, search=search)
+
+
+@app.post("/api/clients", status_code=status.HTTP_201_CREATED, tags=["Clients"])
+async def create_client(
+    client: ClientInput,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Создать клиента
+    """
+    return crud.create_client(db, client)
+
+
+@app.put("/api/clients/{id}", tags=["Clients"])
+async def update_client(
+    id: int,
+    client: Client,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Обновить клиента
+    """
+    updated_client = crud.update_client_full(db, id, client)
+    if not updated_client:
+        raise HTTPException(status_code=404, detail="Client not found")
+    return {"message": "Обновлено"}
+
+
+@app.delete("/api/clients/{id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Clients"])
+async def delete_client(
+    id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Удалить клиента
+    """
+    success = crud.delete_client(db, id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Client not found")
+    return
+
+
+# ============== Employees Endpoints ==============
+@app.get("/api/employees", response_model=List[EmployeeResponse], tags=["Employees"])
+async def get_employees(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Получить список сотрудников
+    """
+    return crud.get_employees(db)
+
+
+@app.post("/api/employees", status_code=status.HTTP_201_CREATED, tags=["Employees"])
+async def create_employee(
+    employee: EmployeeInput,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_admin_user)
+):
+    """
+    Создать сотрудника
+    """
+    return crud.create_employee(db, employee)
+
+
+@app.put("/api/employees/{id}", tags=["Employees"])
+async def update_employee(
+    id: int,
+    employee: EmployeeResponse,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_admin_user)
+):
+    """
+    Обновить сотрудника
+    """
+    updated_employee = crud.update_employee(db, id, employee)
+    if not updated_employee:
+        raise HTTPException(status_code=404, detail="Employee not found")
+    return {"message": "Обновлено"}
+
+
+@app.delete("/api/employees/{id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Employees"])
+async def delete_employee(
+    id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_admin_user)
+):
+    """
+    Удалить сотрудника
+    """
+    success = crud.delete_employee(db, id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Employee not found")
+    return
 
 
 # ============== Health Check ==============
