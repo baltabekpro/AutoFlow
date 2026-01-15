@@ -1,7 +1,7 @@
 """
 Pydantic schemas for request/response validation
 """
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, model_validator
 from typing import Optional, List, TYPE_CHECKING
 from datetime import datetime
 from app.models import OrderStatus, ClientType, EmployeeStatus, OrderItemType
@@ -173,6 +173,15 @@ class OrderItemCreate(BaseModel):
     type: OrderItemType
     
     model_config = ConfigDict(populate_by_name=True)
+    
+    @model_validator(mode='after')
+    def validate_ids(self):
+        """Validate that the appropriate ID is provided based on type"""
+        if self.type == OrderItemType.service and self.service_id is None:
+            raise ValueError("service_id is required when type is 'service'")
+        if self.type == OrderItemType.part and self.inventory_id is None:
+            raise ValueError("inventory_id is required when type is 'part'")
+        return self
 
 
 class OrderItemResponse(OrderItem):

@@ -28,8 +28,14 @@ from app.auth import get_password_hash
 def create_employee(db: Session, employee: EmployeeInput) -> User:
     """Create a new employee"""
     # Generate login from name
-    login = employee.name.lower().replace(" ", "_") + str(uuid.uuid4().hex[:4])
-    password = "password123"  # Default password
+    base_login = employee.name.lower().replace(" ", "_")
+    login = base_login + str(uuid.uuid4().hex[:4])
+    
+    # Generate a random secure password
+    import secrets
+    import string
+    alphabet = string.ascii_letters + string.digits + "!@#$%^&*()"
+    password = ''.join(secrets.choice(alphabet) for i in range(16))
     
     db_user = User(
         name=employee.name,
@@ -42,6 +48,11 @@ def create_employee(db: Session, employee: EmployeeInput) -> User:
     db.add(db_user)
     db.commit()
     db.refresh(db_user)
+    
+    # In a real application, you would send this password to the user via email
+    # For now, we'll log it (in production, use proper secure password delivery)
+    print(f"Created employee {employee.name} with login: {login} and password: {password}")
+    
     return db_user
 
 
