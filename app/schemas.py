@@ -165,12 +165,14 @@ class OrderItem(OrderItemBase):
 
 
 class OrderItemCreate(BaseModel):
-    inventory_id: Optional[int] = None
-    service_id: Optional[int] = None
+    inventory_id: Optional[int] = Field(default=None, alias="inventoryId")
+    service_id: Optional[int] = Field(default=None, alias="serviceId")
     name: str
     price: float
     qty: float = 1
     type: OrderItemType
+    
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class OrderItemResponse(OrderItem):
@@ -179,41 +181,47 @@ class OrderItemResponse(OrderItem):
 
 # ============== Order Schemas ==============
 class OrderBase(BaseModel):
-    client_id: int
-    client_name: Optional[str] = None
+    client_id: int = Field(alias="clientId")
+    client_name: Optional[str] = Field(default=None, alias="clientName")
     vehicle: Optional[str] = None
     plate: Optional[str] = None
     status: OrderStatus = OrderStatus.draft
-    is_urgent: Optional[bool] = False
+    is_urgent: Optional[bool] = Field(default=False, alias="isUrgent")
     notes: Optional[str] = None
     mileage: Optional[int] = None
     damages: Optional[List[str]] = None
+    
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class OrderInput(BaseModel):
-    client_id: int
-    client_name: Optional[str] = None
+    client_id: int = Field(alias="clientId")
+    client_name: Optional[str] = Field(default=None, alias="clientName")
     vehicle: str
     plate: str
     status: Optional[OrderStatus] = OrderStatus.draft
     items: List[OrderItemCreate]
-    is_urgent: Optional[bool] = False
+    is_urgent: Optional[bool] = Field(default=False, alias="isUrgent")
     notes: Optional[str] = None
     mileage: Optional[int] = None
     damages: Optional[List[str]] = None
+    
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class OrderCreate(BaseModel):
-    client_id: int
-    client_name: Optional[str] = None
+    client_id: int = Field(alias="clientId")
+    client_name: Optional[str] = Field(default=None, alias="clientName")
     vehicle: str
     plate: str
     status: Optional[OrderStatus] = OrderStatus.draft
     items: Optional[List[OrderItemCreate]] = None
-    is_urgent: Optional[bool] = False
+    is_urgent: Optional[bool] = Field(default=False, alias="isUrgent")
     notes: Optional[str] = None
     mileage: Optional[int] = None
     damages: Optional[List[str]] = None
+    
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class OrderStatusUpdate(BaseModel):
@@ -224,8 +232,9 @@ class Order(OrderBase):
     id: str
     total: float
     items: List[OrderItem] = []
-    created_at: datetime
-    model_config = ConfigDict(from_attributes=True)
+    created_at: datetime = Field(alias="createdAt")
+    
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
 
 class OrderResponse(Order):
