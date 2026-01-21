@@ -360,9 +360,6 @@ def create_order(db: Session, order: OrderInput) -> Order:
     # Get client name if not provided
     client_name = order.client_name or client.name
     
-    # Convert damages list to JSON string
-    damages_str = json.dumps(order.damages) if order.damages else None
-    
     db_order = Order(
         id=order_id,
         client_id=order.client_id,
@@ -374,7 +371,7 @@ def create_order(db: Session, order: OrderInput) -> Order:
         is_urgent=order.is_urgent or False,
         notes=order.notes,
         mileage=order.mileage,
-        damages=damages_str
+        damages=order.damages
     )
     
     db.add(db_order)
@@ -416,10 +413,7 @@ def update_order(db: Session, order_id: str, order: OrderSchema) -> Optional[Ord
     db_order.is_urgent = order.is_urgent
     db_order.notes = order.notes
     db_order.mileage = order.mileage
-    
-    # Convert damages list to JSON string
-    if order.damages:
-        db_order.damages = json.dumps(order.damages)
+    db_order.damages = order.damages
     
     db.commit()
     db.refresh(db_order)

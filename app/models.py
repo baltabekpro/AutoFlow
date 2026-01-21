@@ -1,7 +1,7 @@
 """
 SQLAlchemy database models
 """
-from sqlalchemy import Column, Integer, String, Float, ForeignKey, DateTime, Enum, Boolean, Text
+from sqlalchemy import Column, Integer, String, Float, ForeignKey, DateTime, Enum, Boolean, Text, JSON
 from sqlalchemy.orm import relationship
 from datetime import datetime, timezone
 import enum
@@ -112,7 +112,7 @@ class Order(Base):
     is_urgent = Column(Boolean, nullable=False, default=False)
     notes = Column(Text, nullable=True)
     mileage = Column(Integer, nullable=True)
-    damages = Column(Text, nullable=True)  # Store as JSON string or comma-separated
+    damages = Column(JSON, nullable=True)  # Store as JSON array
     
     # Relationships
     vehicle_obj = relationship("Vehicle", back_populates="orders")

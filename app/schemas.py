@@ -165,6 +165,7 @@ class OrderItem(OrderItemBase):
 
 
 class OrderItemCreate(BaseModel):
+    id: Optional[int] = None  # Generic ID field
     inventory_id: Optional[int] = Field(default=None, alias="inventoryId")
     service_id: Optional[int] = Field(default=None, alias="serviceId")
     name: str
@@ -177,6 +178,12 @@ class OrderItemCreate(BaseModel):
     @model_validator(mode='after')
     def validate_ids(self):
         """Validate that the appropriate ID is provided based on type"""
+        if self.id is not None:
+            if self.type == OrderItemType.service:
+                self.service_id = self.id
+            elif self.type == OrderItemType.part:
+                self.inventory_id = self.id
+        
         if self.type == OrderItemType.service and self.service_id is None:
             raise ValueError("service_id is required when type is 'service'")
         if self.type == OrderItemType.part and self.inventory_id is None:
