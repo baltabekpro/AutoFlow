@@ -4,12 +4,22 @@ Auto service management system - AutoMaster ERP API
 """
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
+from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from datetime import timedelta, datetime
 from contextlib import asynccontextmanager
 import uuid
 import json
+import os
+import sys
+import threading
+import time
+
+import os
+import sys
+sys.path.insert(0, os.path.dirname(__file__))
 
 from app.database import get_db, init_db
 from app.models import User, OrderStatus, OrderItemType
@@ -47,9 +57,18 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allow all origins
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 
 # ============== Root Endpoint ==============
-@app.get("/", tags=["Root"])
+@app.get("/api/", tags=["Root"])
 async def root():
     """Root endpoint"""
     return {
@@ -427,6 +446,14 @@ async def delete_employee(
 async def health_check():
     """Health check endpoint"""
     return {"status": "healthy"}
+
+
+# Mount static files for frontend - MUST be last to not interfere with API routes
+if getattr(sys, 'frozen', False):
+    dist_path = os.path.join(sys._MEIPASS, 'dist')
+else:
+    dist_path = os.path.join(os.path.dirname(__file__), '..', '..', 'AutoFlow_front', 'dist')
+app.mount("/", StaticFiles(directory=dist_path, html=True), name="static")
 
 
 if __name__ == "__main__":
